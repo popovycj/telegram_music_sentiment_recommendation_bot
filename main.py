@@ -1,23 +1,29 @@
 import os
 import yaml
+from contextvars import ContextVar
 
 from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher, types
+from aiogram.types import BotCommand
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 
+from database import create_pool, check_table_exists, save_user
+
 
 load_dotenv()
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
 SUPPORTED_LANGS = ['en', 'uk']
 
 class QuestionnaireState(StatesGroup):
     IN_QUESTIONNAIRE = State()
 
-bot = Bot(token=TELEGRAM_TOKEN)
+db_pool = ContextVar("db_pool")
+
+bot = Bot(token=TELEGRAM_BOT_TOKEN)
 dp = Dispatcher()
 
 def get_questions(locale: str) -> dict:
@@ -37,6 +43,9 @@ async def start_handler(message: types.Message, state: FSMContext):
 
     if locale not in SUPPORTED_LANGS:
         locale = 'en'
+
+    pool = db_pool.get()
+    await save_user(message.from_user.id, pool)
 
     questions = get_questions(locale)
 
@@ -109,8 +118,22 @@ def setup_handlers():
     dp.message.register(start_handler, Command("start"))
     dp.message.register(handle_answer, QuestionnaireState.IN_QUESTIONNAIRE)
 
+async def on_startup(bot: Bot):
+    pool = await create_pool()
+    await check_table_exists(pool)
+    db_pool.set(pool)
+    await bot.set_my_commands([
+        BotCommand(command="start", description="Start questionnaire")
+    ])
+
+async def on_shutdown(bot: Bot):
+    pool = db_pool.get()
+    await pool.close()
+
 async def main():
     setup_handlers()
+    dp.startup.register(on_startup)
+    dp.shutdown.register(on_shutdown)
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
