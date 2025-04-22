@@ -42,7 +42,8 @@ async def start_handler(message: types.Message, state: FSMContext):
 
     with open(f'config/i18n/{locale}.yml') as f:
         translations = yaml.safe_load(f)
-    thank_you = translations.get('thank_you', 'Thank you for your answers!')
+    thank_you_answer = translations.get('thank_you_answer')
+    invalid_answer = translations.get('invalid_answer')
 
     await state.update_data(
         locale=locale,
@@ -50,7 +51,8 @@ async def start_handler(message: types.Message, state: FSMContext):
         questions=questions,
         current_index=0,
         total_questions=len(questions),
-        thank_you=thank_you
+        thank_you_answer=thank_you_answer,
+        invalid_answer=invalid_answer
     )
 
     await ask_question(message, state)
@@ -76,13 +78,25 @@ async def ask_question(message: types.Message, state: FSMContext):
 
 async def handle_answer(message: types.Message, state: FSMContext):
     data = await state.get_data()
+    current_index = data['current_index']
+    invalid_answer = data['invalid_answer']
+    thank_you_answer = data['thank_you_answer']
+
+    questions = data['questions']
+    question_key = list(questions.keys())[current_index]
+    valid_answers = questions[question_key]['answers']
+
+    if message.text not in valid_answers:
+        await message.answer(invalid_answer)
+        return
+
     data['answers'].append(message.text)
     data['current_index'] += 1
     await state.update_data(data)
 
     if data['current_index'] >= data['total_questions']:
         await message.answer(
-            data['thank_you'],
+            thank_you_answer,
             reply_markup=types.ReplyKeyboardRemove()
         )
         print(f"User answers: {data['answers']}")

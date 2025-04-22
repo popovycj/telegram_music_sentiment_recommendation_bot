@@ -23,4 +23,5 @@ q4:
     - "Daily"
     - "Several times a week"
     - "Rarely"
-thank_you: "Thank you for your answers! Processing your recommendations..."
+thank_you_answer: "Thank you for your answers! Processing your recommendations..."
+invalid_answer: "Please select one of the provided options."
