@@ -1,0 +1,26 @@
+q1:
+  text: "Please choose your age group:"
+  answers:
+    - "Under 18"
+    - "18-25"
+    - "26-35"
+    - "36+"
+q2:
+  text: "How often do you listen to music?"
+  answers:
+    - "Daily"
+    - "Several times a week"
+    - "Rarely"
+q3:
+  text: "How often do you listen to rock?"
+  answers:
+    - "Daily"
+    - "Several times a week"
+    - "Rarely"
+q4:
+  text: "How often do you listen to pop?"
+  answers:
+    - "Daily"
+    - "Several times a week"
+    - "Rarely"
+thank_you: "Thank you for your answers! Processing your recommendations..."

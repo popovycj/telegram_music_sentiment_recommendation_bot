@@ -1,0 +1,104 @@
+import os
+import yaml
+
+from dotenv import load_dotenv
+from aiogram import Bot, Dispatcher, types
+from aiogram.filters import Command
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.utils.keyboard import ReplyKeyboardBuilder
+
+
+load_dotenv()
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+
+SUPPORTED_LANGS = ['en', 'uk']
+
+class QuestionnaireState(StatesGroup):
+    IN_QUESTIONNAIRE = State()
+
+bot = Bot(token=TELEGRAM_TOKEN)
+dp = Dispatcher()
+
+def get_questions(locale: str) -> dict:
+    """Load questions from YAML and auto-detect question count"""
+    with open(f'config/i18n/{locale}.yml') as f:
+        translations = yaml.safe_load(f)
+
+    # Auto-detect questions (keys starting with q + number)
+    questions = {k: v for k, v in translations.items() if k.startswith('q') and k[1:].isdigit()}
+    # Sort questions by their numeric suffix
+    return dict(sorted(questions.items(), key=lambda item: int(item[0][1:])))
+
+async def start_handler(message: types.Message, state: FSMContext):
+    # Detect language with fallback to English
+    user_lang = message.from_user.language_code
+    locale = 'uk' if user_lang == 'uk' else 'en'
+
+    if locale not in SUPPORTED_LANGS:
+        locale = 'en'
+
+    questions = get_questions(locale)
+
+    with open(f'config/i18n/{locale}.yml') as f:
+        translations = yaml.safe_load(f)
+    thank_you = translations.get('thank_you', 'Thank you for your answers!')
+
+    await state.update_data(
+        locale=locale,
+        answers=[],
+        questions=questions,
+        current_index=0,
+        total_questions=len(questions),
+        thank_you=thank_you
+    )
+
+    await ask_question(message, state)
+
+async def ask_question(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    questions = data['questions']
+    current_index = data['current_index']
+
+    question_key = list(questions.keys())[current_index]
+    question = questions[question_key]
+
+    builder = ReplyKeyboardBuilder()
+    for answer in question['answers']:
+        builder.add(types.KeyboardButton(text=answer))
+    builder.adjust(1)
+
+    await message.answer(
+        question['text'],
+        reply_markup=builder.as_markup(resize_keyboard=True)
+    )
+    await state.set_state(QuestionnaireState.IN_QUESTIONNAIRE)
+
+async def handle_answer(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    data['answers'].append(message.text)
+    data['current_index'] += 1
+    await state.update_data(data)
+
+    if data['current_index'] >= data['total_questions']:
+        await message.answer(
+            data['thank_you'],
+            reply_markup=types.ReplyKeyboardRemove()
+        )
+        print(f"User answers: {data['answers']}")
+        await state.clear()
+        return
+
+    await ask_question(message, state)
+
+def setup_handlers():
+    dp.message.register(start_handler, Command("start"))
+    dp.message.register(handle_answer, QuestionnaireState.IN_QUESTIONNAIRE)
+
+async def main():
+    setup_handlers()
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(main())
