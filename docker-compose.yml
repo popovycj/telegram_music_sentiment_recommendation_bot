@@ -30,8 +30,11 @@ services:
       DB_NAME:       ${DB_NAME}
       DB_USER:       ${DB_USER}
       DB_PASSWORD:   ${DB_PASSWORD}
+      REDIS_URL:     "redis://redis:6379"
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     networks:
       - backend
@@ -39,8 +42,23 @@ services:
     volumes:
       - ./:/app
 
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - backend
+
 volumes:
   postgres_data:
+  redis_data:
 
 networks:
   backend:

@@ -1,8 +1,3 @@
-import os
-import yaml
-from contextvars import ContextVar
-
-from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import BotCommand
 from aiogram.filters import Command
@@ -10,36 +5,17 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 
-from database import create_pool, check_table_exists, save_user
+import config
+from database import create_db_pool, check_table_exists, save_user, db_pool
+from utils import detect_user_locale, get_translations, get_questions
+from middlewares import RateLimitMiddleware, create_redis_pool, redis_pool
 
-
-load_dotenv()
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-
-SUPPORTED_LANGS = ['en', 'uk']
 
 class QuestionnaireState(StatesGroup):
     IN_QUESTIONNAIRE = State()
 
-db_pool = ContextVar("db_pool")
-
-bot = Bot(token=TELEGRAM_BOT_TOKEN)
+bot = Bot(token=config.TELEGRAM_BOT_TOKEN)
 dp = Dispatcher()
-
-def detect_user_locale(message: types.Message) -> str:
-    """Detect user's preferred language with fallback to English"""
-    user_lang = message.from_user.language_code
-    return 'uk' if user_lang == 'uk' else 'en'
-
-def get_translations(locale: str) -> dict:
-    """Load and return all translations for a locale"""
-    with open(f'config/i18n/{locale}.yml') as f:
-        return yaml.safe_load(f)
-
-def get_questions(translations: dict) -> dict:
-    """Extract and sort questions from translations"""
-    questions = {k: v for k, v in translations.items() if k.startswith('q') and k[1:].isdigit()}
-    return dict(sorted(questions.items(), key=lambda item: int(item[0][1:])))
 
 async def start_handler(message: types.Message, state: FSMContext):
     pool = db_pool.get()
@@ -125,16 +101,22 @@ def setup_handlers():
     dp.message.register(default_handler, lambda message: True)
 
 async def on_startup(bot: Bot):
-    pool = await create_pool()
+    pool = await create_db_pool()
     await check_table_exists(pool)
     db_pool.set(pool)
+
+    r = await create_redis_pool()
+    redis_pool.set(r)
+
+    dp.message.middleware(RateLimitMiddleware())
+
     await bot.set_my_commands([
-        BotCommand(command="start", description="Start questionnaire")
+        BotCommand(command="start", description="Start questionnaire"),
     ])
 
 async def on_shutdown(bot: Bot):
-    pool = db_pool.get()
-    await pool.close()
+    await db_pool.get().close()
+    await redis_pool.get().close()
 
 async def main():
     setup_handlers()

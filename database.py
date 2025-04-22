@@ -1,10 +1,14 @@
-import asyncpg
 import os
+from contextvars import ContextVar
+
+import asyncpg
 from dotenv import load_dotenv
 
 load_dotenv()
 
-async def create_pool():
+db_pool = ContextVar("db_pool")
+
+async def create_db_pool():
     return await asyncpg.create_pool(
         host=os.getenv('DB_HOST'),
         database=os.getenv('DB_NAME'),

@@ -2,3 +2,4 @@ aiogram
 pyyaml
 python-dotenv
 asyncpg
+redis>=4.5.5

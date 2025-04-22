@@ -25,4 +25,5 @@ q4:
     - "Rarely"
 thank_you_answer: "Thank you for your answers! Processing your recommendations..."
 invalid_answer: "Please select one of the provided options."
+rate_limit_message: "Too many requests. Please try again in {seconds} seconds"
 entry_message: "Hello! Please use the /start command to begin the music recommendation questionnaire. 🎵"
