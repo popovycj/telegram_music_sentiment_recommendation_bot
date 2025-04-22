@@ -2,17 +2,14 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.types import BotCommand
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 
 import config
+from states import QuestionnaireState
 from database import create_db_pool, check_table_exists, save_user, db_pool
 from utils import detect_user_locale, get_translations, get_questions
 from middlewares import RateLimitMiddleware, create_redis_pool, redis_pool
 
-
-class QuestionnaireState(StatesGroup):
-    IN_QUESTIONNAIRE = State()
 
 bot = Bot(token=config.TELEGRAM_BOT_TOKEN)
 dp = Dispatcher()
