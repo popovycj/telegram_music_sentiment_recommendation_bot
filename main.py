@@ -26,31 +26,29 @@ db_pool = ContextVar("db_pool")
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 dp = Dispatcher()
 
-def get_questions(locale: str) -> dict:
-    """Load questions from YAML and auto-detect question count"""
-    with open(f'config/i18n/{locale}.yml') as f:
-        translations = yaml.safe_load(f)
+def detect_user_locale(message: types.Message) -> str:
+    """Detect user's preferred language with fallback to English"""
+    user_lang = message.from_user.language_code
+    return 'uk' if user_lang == 'uk' else 'en'
 
-    # Auto-detect questions (keys starting with q + number)
+def get_translations(locale: str) -> dict:
+    """Load and return all translations for a locale"""
+    with open(f'config/i18n/{locale}.yml') as f:
+        return yaml.safe_load(f)
+
+def get_questions(translations: dict) -> dict:
+    """Extract and sort questions from translations"""
     questions = {k: v for k, v in translations.items() if k.startswith('q') and k[1:].isdigit()}
-    # Sort questions by their numeric suffix
     return dict(sorted(questions.items(), key=lambda item: int(item[0][1:])))
 
 async def start_handler(message: types.Message, state: FSMContext):
-    # Detect language with fallback to English
-    user_lang = message.from_user.language_code
-    locale = 'uk' if user_lang == 'uk' else 'en'
-
-    if locale not in SUPPORTED_LANGS:
-        locale = 'en'
-
     pool = db_pool.get()
     await save_user(message.from_user.id, pool)
 
-    questions = get_questions(locale)
+    locale = detect_user_locale(message)
+    translations = get_translations(locale)
 
-    with open(f'config/i18n/{locale}.yml') as f:
-        translations = yaml.safe_load(f)
+    questions = get_questions(translations)
     thank_you_answer = translations.get('thank_you_answer')
     invalid_answer = translations.get('invalid_answer')
 
@@ -114,9 +112,17 @@ async def handle_answer(message: types.Message, state: FSMContext):
 
     await ask_question(message, state)
 
+async def default_handler(message: types.Message, state: FSMContext):
+    current_state = await state.get_state()
+    if current_state != QuestionnaireState.IN_QUESTIONNAIRE:
+        locale = detect_user_locale(message)
+        translations = get_translations(locale)
+        await message.answer(translations.get('entry_message'))
+
 def setup_handlers():
     dp.message.register(start_handler, Command("start"))
     dp.message.register(handle_answer, QuestionnaireState.IN_QUESTIONNAIRE)
+    dp.message.register(default_handler, lambda message: True)
 
 async def on_startup(bot: Bot):
     pool = await create_pool()
