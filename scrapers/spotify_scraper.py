@@ -35,7 +35,9 @@ class AsyncSpotifyScraper:
         self._token_lock = asyncio.Lock()
 
         self._sem = asyncio.Semaphore(max_concurrent)
-        self._global_pause_until = 0.0
+
+        self._pause_event = asyncio.Event()
+        self._pause_event.set()
 
         self._session: Optional[aiohttp.ClientSession] = None
         self.max_retries = max_retries
@@ -75,12 +77,6 @@ class AsyncSpotifyScraper:
             assert self._session is not None
             self._session.headers.update({"Authorization": f"Bearer {self.access_token}"})
 
-    async def _maybe_wait_pause(self) -> None:
-        # if global pause set, wait until it expires
-        now = asyncio.get_event_loop().time()
-        if now < self._global_pause_until:
-            await asyncio.sleep(self._global_pause_until - now)
-
     async def _request(
         self,
         method: str,
@@ -93,7 +89,7 @@ class AsyncSpotifyScraper:
         backoff = 1.0
 
         for attempt in range(1, self.max_retries + 1):
-            await self._maybe_wait_pause()
+            await self._pause_event.wait()
 
             async with self._sem:
                 resp: ClientResponse
@@ -115,9 +111,11 @@ class AsyncSpotifyScraper:
                 # 429: rate limited
                 if resp.status == 429:
                     retry_after = int(resp.headers.get("Retry-After", "1"))
-                    self.logger.warning(f"Rate limited on {url}, retrying after {retry_after}s")
-                    self._global_pause_until = asyncio.get_event_loop().time() + retry_after
-                    await asyncio.sleep(retry_after)
+                    self.logger.warning(f"Rate limited on {url}, pausing all requests for {retry_after}s")
+                    self._pause_event.clear()
+                    asyncio.get_event_loop().call_later(retry_after, self._pause_event.set)
+                    await self._pause_event.wait()
+                    self.logger.info(f"Resuming requests...")
                     continue
 
                 # 5xx: server error
